@@ -1,0 +1,5 @@
+"id","email","password_hash","role","full_name","phone","whatsapp_number","is_active","onboarding_completed","created_at","updated_at"
+"510f824d-8c1a-4a54-ab73-0264489206c9","chavansahil1610@gmail.com","$2b$12$HQXj0R869BSlJeZUxbCApOOnWagA3zMIHLMSSb0SysyVtIP6ETgoK","ca","sahil chavan ","8766760448","8766760448",True,True,"2026-01-25 21:03:02.775972+05:30","2026-01-25 21:07:33.942637+05:30"
+"705380f2-eb26-46ef-8669-cdf4834b6b1d","compliosinfo@gmail.com","$2b$12$.KdkpN2RQL.f1YKmLqHdm.SvNJXF0MCpe38hYKvRJ/Zsgs.FTNJH.","admin","CompliOS Admin","8766760448","8766760448",True,True,"2026-01-25 20:45:36.174452+05:30","2026-01-25 21:19:35.058441+05:30"
+"dc2e07d1-5f46-4ed9-a874-b6c46f1a8d34","chavnsahil1610@gmail.com","$2b$12$LJFPKfFkQsv9LPisNsDzhO/XeEoNy/Xsr/t0.kvU2L3v1s/m9WSfe","ca","sahil chavan ","8766760448","8766760448",True,True,"2026-01-25 21:01:52.088358+05:30","2026-01-25 21:02:01.671751+05:30"
+"fcd5f7d2-5280-4c18-b969-d1520c4a44ce","cartoonlife1616@gmail.com","$2b$12$9.ChoLiWvAiVbGJ2pVbY/O1cbqIdx7CPSAiy/o93LRSkBzURLKZwC","business","sahil chavan ","8766760448","8766760448",True,True,"2026-01-25 20:48:01.545072+05:30","2026-01-25 21:01:11.014681+05:30"

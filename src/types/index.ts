@@ -57,6 +57,7 @@ export interface DiaryEditPermission {
   partnerId: string;
   canEdit: boolean;
   grantedAt: string;
+  grantedBy: string;
 }
 
 export interface Request {
@@ -66,7 +67,7 @@ export interface Request {
   receiverId: string;
   diaryId?: string;
   reason?: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'accepted' | 'rejected';
   createdAt: string;
 }
 

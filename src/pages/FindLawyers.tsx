@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Search, UserPlus, MapPin, Briefcase } from 'lucide-react';
 import { Button } from '@/ui/button';
@@ -18,13 +18,28 @@ export default function FindLawyers() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<LawyerProfile[]>([]);
   const [hasSearched, setHasSearched] = useState(false);
+  const [requestStatuses, setRequestStatuses] = useState<Map<string, 'none' | 'pending' | 'accepted'>>(new Map());
+
+  useEffect(() => {
+    const loadStatuses = async () => {
+      const statuses = new Map<string, 'none' | 'pending' | 'accepted'>();
+      for (const lawyer of searchResults) {
+        const status = await getRequestStatus(lawyer.id);
+        statuses.set(lawyer.id, status);
+      }
+      setRequestStatuses(statuses);
+    };
+    if (searchResults.length > 0) {
+      loadStatuses();
+    }
+  }, [searchResults]);
 
   if (!user || user.role !== 'partner') {
     navigate('/dashboard');
     return null;
   }
 
-  const handleSearch = () => {
+  const handleSearch = async () => {
     if (!searchQuery.trim()) {
       toast({
         title: 'Enter Search Term',
@@ -34,14 +49,14 @@ export default function FindLawyers() {
       return;
     }
 
-    const results = searchLawyers(searchQuery);
+    const results = await searchLawyers(searchQuery);
     setSearchResults(results);
     setHasSearched(true);
   };
 
-  const handleRequestPartner = (lawyer: LawyerProfile) => {
+  const handleRequestPartner = async (lawyer: LawyerProfile) => {
     // Check if already a partner or has pending request
-    const relationships = getPartnerRelationships();
+    const relationships = await getPartnerRelationships();
     const existingRelationship = relationships.find(
       r => r.lawyerId === lawyer.id && r.partnerId === user.id
     );
@@ -57,7 +72,7 @@ export default function FindLawyers() {
       }
     }
 
-    const requests = getRequests();
+    const requests = await getRequests();
     const existingRequest = requests.find(
       r => r.senderId === user.id && r.receiverId === lawyer.id && r.type === 'partner_request' && r.status === 'pending'
     );
@@ -80,7 +95,7 @@ export default function FindLawyers() {
       createdAt: new Date().toISOString(),
     };
 
-    createRequest(newRequest);
+    await createRequest(newRequest);
 
     toast({
       title: 'Request Sent!',
@@ -88,14 +103,14 @@ export default function FindLawyers() {
     });
   };
 
-  const getRequestStatus = (lawyerId: string): 'none' | 'pending' | 'accepted' => {
-    const relationships = getPartnerRelationships();
+  const getRequestStatus = async (lawyerId: string): Promise<'none' | 'pending' | 'accepted'> => {
+    const relationships = await getPartnerRelationships();
     const relationship = relationships.find(
       r => r.lawyerId === lawyerId && r.partnerId === user.id
     );
     if (relationship?.status === 'accepted') return 'accepted';
 
-    const requests = getRequests();
+    const requests = await getRequests();
     const request = requests.find(
       r => r.senderId === user.id && r.receiverId === lawyerId && r.type === 'partner_request' && r.status === 'pending'
     );
@@ -143,7 +158,7 @@ export default function FindLawyers() {
                     Found {searchResults.length} lawyer(s)
                   </p>
                   {searchResults.map((lawyer) => {
-                    const status = getRequestStatus(lawyer.id);
+                    const status = requestStatuses.get(lawyer.id) || 'none';
                     
                     return (
                       <Card

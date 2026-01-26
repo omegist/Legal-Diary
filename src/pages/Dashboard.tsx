@@ -5,10 +5,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/ui/
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/layout/Header';
 import { getDiariesByLawyer, getRequestsByReceiver, getPartnersByLawyer, getLawyersByPartner } from '@/lib/storage';
+import { useState, useEffect } from 'react';
+import { Diary, PartnerRelationship, Request } from '@/types';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [lawyerDiaries, setLawyerDiaries] = useState<Diary[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<Request[]>([]);
+  const [partners, setPartners] = useState<PartnerRelationship[]>([]);
+  const [connectedLawyers, setConnectedLawyers] = useState<PartnerRelationship[]>([]);
+  const [loading, setLoading] = useState(true);
 
   if (!user) {
     navigate('/login');
@@ -17,13 +24,30 @@ export default function Dashboard() {
 
   const isLawyer = user.role === 'lawyer';
 
-  // Stats for lawyers
-  const lawyerDiaries = isLawyer ? getDiariesByLawyer(user.id) : [];
-  const pendingRequests = isLawyer ? getRequestsByReceiver(user.id) : [];
-  const partners = isLawyer ? getPartnersByLawyer(user.id) : [];
-
-  // Stats for partners
-  const connectedLawyers = !isLawyer ? getLawyersByPartner(user.id) : [];
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        if (isLawyer) {
+          const [diaries, requests, partnersList] = await Promise.all([
+            getDiariesByLawyer(user.id),
+            getRequestsByReceiver(user.id),
+            getPartnersByLawyer(user.id)
+          ]);
+          setLawyerDiaries(diaries);
+          setPendingRequests(requests);
+          setPartners(partnersList);
+        } else {
+          const lawyers = await getLawyersByPartner(user.id);
+          setConnectedLawyers(lawyers);
+        }
+      } catch (error) {
+        console.error('Error loading dashboard data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [user.id, isLawyer]);
 
   const today = new Date().toLocaleDateString('en-IN', {
     weekday: 'long',
@@ -31,6 +55,20 @@ export default function Dashboard() {
     month: 'long',
     day: 'numeric',
   });
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">

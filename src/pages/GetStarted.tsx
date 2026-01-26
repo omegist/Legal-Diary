@@ -17,7 +17,7 @@ export default function GetStarted() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleCredentialsSubmit = (e: React.FormEvent) => {
+  const handleCredentialsSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email || !password) {
@@ -47,17 +47,31 @@ export default function GetStarted() {
       return;
     }
 
-    const existingUser = getUserByEmail(email);
-    if (existingUser) {
+    try {
+      console.log('Checking email:', email);
+      const existingUser = await getUserByEmail(email);
+      console.log('Existing user result:', existingUser);
+      
+      if (existingUser) {
+        console.log('User exists, showing error');
+        toast({
+          title: 'Account Exists',
+          description: 'An account with this email already exists. Please sign in instead.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      console.log('No user found, proceeding to role selection');
+      setStep('role');
+    } catch (error) {
+      console.error('Error checking email:', error);
       toast({
-        title: 'Account Exists',
-        description: 'An account with this email already exists. Please sign in.',
+        title: 'Error',
+        description: 'Failed to check email. Please try again.',
         variant: 'destructive',
       });
-      return;
     }
-
-    setStep('role');
   };
 
   const handleRoleSelect = (role: UserRole) => {

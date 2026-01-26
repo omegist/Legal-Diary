@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle, XCircle, UserPlus, Edit } from 'lucide-react';
 import { Card, CardContent } from '@/ui/card';
@@ -6,17 +7,65 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/layout/Header';
 import { getRequestsBySender, getUserById, getDiaryById } from '@/lib/storage';
 import { Badge } from '@/ui/badge';
+import { Request } from '@/types';
 
 export default function MyRequests() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [requests, setRequests] = useState<Request[]>([]);
+  const [lawyers, setLawyers] = useState<Map<string, any>>(new Map());
+  const [diaries, setDiaries] = useState<Map<string, any>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadRequests = async () => {
+      if (!user) return;
+      try {
+        const data = await getRequestsBySender(user.id);
+        setRequests(data);
+        
+        // Load lawyers and diaries
+        const lawyerMap = new Map();
+        const diaryMap = new Map();
+        for (const req of data) {
+          if (!lawyerMap.has(req.receiverId)) {
+            const lawyer = await getUserById(req.receiverId);
+            if (lawyer) lawyerMap.set(req.receiverId, lawyer);
+          }
+          if (req.diaryId && !diaryMap.has(req.diaryId)) {
+            const diary = await getDiaryById(req.diaryId);
+            if (diary) diaryMap.set(req.diaryId, diary);
+          }
+        }
+        setLawyers(lawyerMap);
+        setDiaries(diaryMap);
+      } catch (error) {
+        console.error('Error loading requests:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadRequests();
+  }, [user]);
 
   if (!user || user.role !== 'partner') {
     navigate('/dashboard');
     return null;
   }
 
-  const requests = getRequestsBySender(user.id);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading requests...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
   const partnerRequests = requests.filter(r => r.type === 'partner_request');
   const editRequests = requests.filter(r => r.type === 'edit_request');
 
@@ -29,11 +78,11 @@ export default function MyRequests() {
             Pending
           </Badge>
         );
-      case 'approved':
+      case 'accepted':
         return (
           <Badge className="gap-1 bg-green-500/20 text-green-400 hover:bg-green-500/30">
             <CheckCircle className="h-3 w-3" />
-            Approved
+            Accepted
           </Badge>
         );
       case 'rejected':
@@ -76,7 +125,7 @@ export default function MyRequests() {
             {partnerRequests.length > 0 ? (
               <div className="space-y-4">
                 {partnerRequests.map((request) => {
-                  const lawyer = getUserById(request.receiverId);
+                  const lawyer = lawyers.get(request.receiverId);
                   if (!lawyer) return null;
 
                   return (
@@ -113,8 +162,8 @@ export default function MyRequests() {
             {editRequests.length > 0 ? (
               <div className="space-y-4">
                 {editRequests.map((request) => {
-                  const lawyer = getUserById(request.receiverId);
-                  const diary = request.diaryId ? getDiaryById(request.diaryId) : null;
+                  const lawyer = lawyers.get(request.receiverId);
+                  const diary = request.diaryId ? diaries.get(request.diaryId) : null;
                   if (!lawyer || !diary) return null;
 
                   return (

@@ -22,19 +22,19 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const user = getUserByEmail(email);
+      const user = await getUserByEmail(email);
       
       if (!user) {
         toast({
           title: 'Account Not Found',
-          description: 'No account found with this email. Please sign up.',
+          description: 'No account found with this email. Please sign up first.',
           variant: 'destructive',
         });
+        setIsLoading(false);
         return;
       }
 
       // In a real app, you'd verify the password here
-      // For localStorage demo, we'll just log them in
       setUser(user);
       toast({
         title: 'Welcome back!',

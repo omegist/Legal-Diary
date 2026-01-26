@@ -11,14 +11,16 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/layout/Header';
 import { getDiaryById, updateDiary, canPartnerEditDiary } from '@/lib/storage';
+import { Diary } from '@/types';
 
 export default function EditDiary() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const { user } = useAuth();
-
-  const diary = id ? getDiaryById(id) : null;
+  const [diary, setDiary] = useState<Diary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [canEdit, setCanEdit] = useState(false);
 
   const [formData, setFormData] = useState({
     matterDate: '',
@@ -36,44 +38,71 @@ export default function EditDiary() {
   });
 
   useEffect(() => {
-    if (diary) {
-      setFormData({
-        matterDate: diary.matterDate,
-        courtName: diary.courtName,
-        caseType: diary.caseType,
-        caseNumber: diary.caseNumber,
-        partyNames: diary.partyNames,
-        opponentAdvocate: diary.opponentAdvocate || '',
-        stageOfCase: diary.stageOfCase,
-        purposeOfHearing: diary.purposeOfHearing,
-        notes: diary.notes || '',
-        reminderEnabled: diary.reminderEnabled,
-        reminderDate: diary.reminderDate || '',
-        reminderTime: diary.reminderTime || '',
-      });
-    }
-  }, [diary]);
+    const loadDiary = async () => {
+      if (!id || !user) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const diaryData = await getDiaryById(id);
+        if (!diaryData) {
+          navigate('/diaries');
+          return;
+        }
+        setDiary(diaryData);
+        
+        const isOwner = diaryData.lawyerId === user.id;
+        const hasPermission = user.role === 'partner' ? await canPartnerEditDiary(user.id, id) : false;
+        const canEditDiary = isOwner || hasPermission;
+        setCanEdit(canEditDiary);
+        
+        if (!canEditDiary) {
+          navigate(`/diaries/${id}`);
+          return;
+        }
+        
+        setFormData({
+          matterDate: diaryData.matterDate,
+          courtName: diaryData.courtName,
+          caseType: diaryData.caseType,
+          caseNumber: diaryData.caseNumber,
+          partyNames: diaryData.partyNames,
+          opponentAdvocate: diaryData.opponentAdvocate || '',
+          stageOfCase: diaryData.stageOfCase,
+          purposeOfHearing: diaryData.purposeOfHearing,
+          notes: diaryData.notes || '',
+          reminderEnabled: diaryData.reminderEnabled,
+          reminderDate: diaryData.reminderDate || '',
+          reminderTime: diaryData.reminderTime || '',
+        });
+      } catch (error) {
+        console.error('Error loading diary:', error);
+        navigate('/diaries');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDiary();
+  }, [id, user, navigate]);
 
-  if (!user) {
-    navigate('/login');
-    return null;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading diary...</p>
+          </div>
+        </main>
+      </div>
+    );
   }
 
-  if (!diary) {
-    navigate('/diaries');
-    return null;
-  }
-
-  const isOwner = diary.lawyerId === user.id;
-  const canEdit = isOwner || (user.role === 'partner' && canPartnerEditDiary(user.id, diary.id));
-
-  if (!canEdit) {
-    navigate(`/diaries/${id}`);
-    return null;
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!diary) return;
 
     const requiredFields = ['matterDate', 'courtName', 'caseType', 'caseNumber', 'partyNames', 'stageOfCase', 'purposeOfHearing'];
     const missingFields = requiredFields.filter(field => !formData[field as keyof typeof formData]);
@@ -87,20 +116,53 @@ export default function EditDiary() {
       return;
     }
 
-    updateDiary({
-      ...diary,
-      ...formData,
-      notes: formData.notes || undefined,
-      reminderDate: formData.reminderDate || undefined,
-      reminderTime: formData.reminderTime || undefined,
-    });
+    // Validate reminder time is in the future
+    if (formData.reminderEnabled && formData.reminderDate && formData.reminderTime) {
+      const reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}`);
+      const now = new Date();
+      
+      if (reminderDateTime <= now) {
+        toast({
+          title: 'Invalid Reminder Time',
+          description: 'Reminder must be set for a future date and time.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
 
-    toast({
-      title: 'Diary Updated',
-      description: 'Your changes have been saved.',
-    });
+    try {
+      await updateDiary({
+        ...diary,
+        ...formData,
+        notes: formData.notes || undefined,
+        reminderDate: formData.reminderDate || undefined,
+        reminderTime: formData.reminderTime || undefined,
+        updatedAt: new Date().toISOString(),
+      });
 
-    navigate(`/diaries/${id}`);
+      // If partner edited, revoke permission after save
+      if (user?.role === 'partner' && canEdit) {
+        const { revokeEditPermission } = await import('@/lib/storage');
+        await revokeEditPermission(user.id, diary.id);
+      }
+
+      toast({
+        title: 'Diary Updated',
+        description: user?.role === 'partner' 
+          ? 'Your changes have been saved. You will need to request permission again to edit.'
+          : 'Your changes have been saved.',
+      });
+
+      navigate(`/diaries/${id}`);
+    } catch (error) {
+      console.error('Error updating diary:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update diary. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (

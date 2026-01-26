@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Edit, Calendar, Building2, FileText, Users, Bell, Trash2 } from 'lucide-react';
 import { Button } from '@/ui/button';
@@ -7,6 +7,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/layout/Header';
 import { getDiaryById, deleteDiary, canPartnerEditDiary } from '@/lib/storage';
+import { Diary } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,12 +25,50 @@ export default function DiaryView() {
   const { id } = useParams<{ id: string }>();
   const { toast } = useToast();
   const { user } = useAuth();
+  const [diary, setDiary] = useState<Diary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [canEditDiary, setCanEditDiary] = useState(false);
 
-  const diary = id ? getDiaryById(id) : null;
+  useEffect(() => {
+    const loadDiary = async () => {
+      if (!id) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const diaryData = await getDiaryById(id);
+        setDiary(diaryData || null);
+        
+        if (diaryData && user?.role === 'partner') {
+          const hasPermission = await canPartnerEditDiary(user.id, id);
+          setCanEditDiary(hasPermission);
+        }
+      } catch (error) {
+        console.error('Error loading diary:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDiary();
+  }, [id, user]);
 
   if (!user) {
     navigate('/login');
     return null;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading diary...</p>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   if (!diary) {
@@ -54,10 +93,10 @@ export default function DiaryView() {
   }
 
   const isOwner = diary.lawyerId === user.id;
-  const canEdit = isOwner || (user.role === 'partner' && canPartnerEditDiary(user.id, diary.id));
+  const canEdit = isOwner || (user.role === 'partner' && canEditDiary);
 
-  const handleDelete = () => {
-    deleteDiary(diary.id);
+  const handleDelete = async () => {
+    await deleteDiary(diary.id);
     toast({
       title: 'Diary Deleted',
       description: 'The diary entry has been removed.',

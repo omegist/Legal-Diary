@@ -1,76 +1,109 @@
 import { User, LawyerProfile, PartnerProfile, Diary, PartnerRelationship, Request, DiaryEditPermission, AuditLog } from '@/types';
 
+// Use environment variable or fallback to production URL
+const API_URL = import.meta.env.VITE_API_URL || 'https://legal-diary-backend.onrender.com/api';
 const STORAGE_KEYS = {
   CURRENT_USER: 'legalDiary_currentUser',
-  USERS: 'legalDiary_users',
-  DIARIES: 'legalDiary_diaries',
-  PARTNER_RELATIONSHIPS: 'legalDiary_partnerRelationships',
-  REQUESTS: 'legalDiary_requests',
-  EDIT_PERMISSIONS: 'legalDiary_editPermissions',
-  AUDIT_LOGS: 'legalDiary_auditLogs',
 };
 
-// Generic helpers
-function getItem<T>(key: string, defaultValue: T): T {
-  try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch {
-    return defaultValue;
-  }
-}
+// Helper to convert snake_case to camelCase
+const toCamel = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(toCamel);
+  
+  return Object.keys(obj).reduce((acc, key) => {
+    const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+    acc[camelKey] = toCamel(obj[key]);
+    return acc;
+  }, {} as any);
+};
 
-function setItem<T>(key: string, value: T): void {
-  localStorage.setItem(key, JSON.stringify(value));
-}
+// Helper to convert camelCase to snake_case
+const toSnake = (obj: any): any => {
+  if (!obj || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) return obj.map(toSnake);
+  
+  return Object.keys(obj).reduce((acc, key) => {
+    const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+    acc[snakeKey] = toSnake(obj[key]);
+    return acc;
+  }, {} as any);
+};
 
-// User management
+// Current user (still in localStorage for session)
 export function getCurrentUser(): LawyerProfile | PartnerProfile | null {
-  return getItem(STORAGE_KEYS.CURRENT_USER, null);
+  try {
+    const item = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+    return item ? JSON.parse(item) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function setCurrentUser(user: LawyerProfile | PartnerProfile | null): void {
-  setItem(STORAGE_KEYS.CURRENT_USER, user);
-}
-
-export function getAllUsers(): (LawyerProfile | PartnerProfile)[] {
-  return getItem(STORAGE_KEYS.USERS, []);
-}
-
-export function getUserById(id: string): LawyerProfile | PartnerProfile | undefined {
-  return getAllUsers().find(u => u.id === id);
-}
-
-export function getUserByEmail(email: string): LawyerProfile | PartnerProfile | undefined {
-  return getAllUsers().find(u => u.email === email);
-}
-
-export function createUser(user: LawyerProfile | PartnerProfile): void {
-  const users = getAllUsers();
-  users.push(user);
-  setItem(STORAGE_KEYS.USERS, users);
-  setCurrentUser(user);
-  addAuditLog('USER_CREATED', user.id, 'user', user.id);
-}
-
-export function updateUser(user: LawyerProfile | PartnerProfile): void {
-  const users = getAllUsers();
-  const index = users.findIndex(u => u.id === user.id);
-  if (index !== -1) {
-    users[index] = user;
-    setItem(STORAGE_KEYS.USERS, users);
-    if (getCurrentUser()?.id === user.id) {
-      setCurrentUser(user);
-    }
+  if (user) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   }
 }
 
-export function getLawyers(): LawyerProfile[] {
-  return getAllUsers().filter((u): u is LawyerProfile => u.role === 'lawyer');
+// Users
+export async function getAllUsers(): Promise<(LawyerProfile | PartnerProfile)[]> {
+  const res = await fetch(`${API_URL}/users`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function searchLawyers(query: string): LawyerProfile[] {
-  const lawyers = getLawyers();
+export async function getUserById(id: string): Promise<LawyerProfile | PartnerProfile | undefined> {
+  const res = await fetch(`${API_URL}/users/${id}`);
+  const data = await res.json();
+  return toCamel(data);
+}
+
+export async function getUserByEmail(email: string): Promise<LawyerProfile | PartnerProfile | undefined> {
+  try {
+    const res = await fetch(`${API_URL}/users/email/${encodeURIComponent(email)}`);
+    const data = await res.json();
+    // If no user found, API returns null or empty object
+    if (!data || Object.keys(data).length === 0) {
+      return undefined;
+    }
+    return toCamel(data);
+  } catch (error) {
+    console.error('Error fetching user by email:', error);
+    return undefined;
+  }
+}
+
+export async function createUser(user: LawyerProfile | PartnerProfile): Promise<void> {
+  await fetch(`${API_URL}/users`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(user)),
+  });
+  setCurrentUser(user);
+  await addAuditLog('USER_CREATED', user.id, 'user', user.id);
+}
+
+export async function updateUser(user: LawyerProfile | PartnerProfile): Promise<void> {
+  await fetch(`${API_URL}/users/${user.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(user)),
+  });
+  if (getCurrentUser()?.id === user.id) {
+    setCurrentUser(user);
+  }
+}
+
+export async function getLawyers(): Promise<LawyerProfile[]> {
+  const users = await getAllUsers();
+  return users.filter((u): u is LawyerProfile => u.role === 'lawyer');
+}
+
+export async function searchLawyers(query: string): Promise<LawyerProfile[]> {
+  const lawyers = await getLawyers();
   const lowerQuery = query.toLowerCase();
   return lawyers.filter(l => 
     l.name.toLowerCase().includes(lowerQuery) ||
@@ -78,161 +111,176 @@ export function searchLawyers(query: string): LawyerProfile[] {
   );
 }
 
-// Diary management
-export function getDiaries(): Diary[] {
-  return getItem(STORAGE_KEYS.DIARIES, []);
+// Diaries
+export async function getDiaries(): Promise<Diary[]> {
+  const res = await fetch(`${API_URL}/diaries`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function getDiaryById(id: string): Diary | undefined {
-  return getDiaries().find(d => d.id === id);
+export async function getDiaryById(id: string): Promise<Diary | undefined> {
+  const res = await fetch(`${API_URL}/diaries/${id}`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function getDiariesByLawyer(lawyerId: string): Diary[] {
-  return getDiaries().filter(d => d.lawyerId === lawyerId);
+export async function getDiariesByLawyer(lawyerId: string): Promise<Diary[]> {
+  const res = await fetch(`${API_URL}/diaries/lawyer/${lawyerId}`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function createDiary(diary: Diary): void {
-  const diaries = getDiaries();
-  diaries.push(diary);
-  setItem(STORAGE_KEYS.DIARIES, diaries);
-  addAuditLog('DIARY_CREATED', diary.lawyerId, 'diary', diary.id);
-}
-
-export function updateDiary(diary: Diary): void {
-  const diaries = getDiaries();
-  const index = diaries.findIndex(d => d.id === diary.id);
-  if (index !== -1) {
-    diaries[index] = { ...diary, updatedAt: new Date().toISOString() };
-    setItem(STORAGE_KEYS.DIARIES, diaries);
-    const currentUser = getCurrentUser();
-    addAuditLog('DIARY_UPDATED', currentUser?.id || 'unknown', 'diary', diary.id);
+export async function createDiary(diary: Diary): Promise<void> {
+  console.log('Creating diary:', diary);
+  const snakeData = toSnake(diary);
+  console.log('Snake case data:', snakeData);
+  const res = await fetch(`${API_URL}/diaries`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(snakeData),
+  });
+  const result = await res.json();
+  console.log('Create diary response:', result);
+  if (!res.ok) {
+    throw new Error(`Failed to create diary: ${JSON.stringify(result)}`);
   }
+  await addAuditLog('DIARY_CREATED', diary.lawyerId, 'diary', diary.id);
 }
 
-export function deleteDiary(diaryId: string): void {
-  const diaries = getDiaries().filter(d => d.id !== diaryId);
-  setItem(STORAGE_KEYS.DIARIES, diaries);
+export async function updateDiary(diary: Diary): Promise<void> {
+  await fetch(`${API_URL}/diaries/${diary.id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(diary)),
+  });
   const currentUser = getCurrentUser();
-  addAuditLog('DIARY_DELETED', currentUser?.id || 'unknown', 'diary', diaryId);
+  await addAuditLog('DIARY_UPDATED', currentUser?.id || 'unknown', 'diary', diary.id);
 }
 
-// Partner relationships
-export function getPartnerRelationships(): PartnerRelationship[] {
-  return getItem(STORAGE_KEYS.PARTNER_RELATIONSHIPS, []);
+export async function deleteDiary(diaryId: string): Promise<void> {
+  await fetch(`${API_URL}/diaries/${diaryId}`, { method: 'DELETE' });
+  const currentUser = getCurrentUser();
+  await addAuditLog('DIARY_DELETED', currentUser?.id || 'unknown', 'diary', diaryId);
 }
 
-export function getPartnersByLawyer(lawyerId: string): PartnerRelationship[] {
-  return getPartnerRelationships().filter(
-    r => r.lawyerId === lawyerId && r.status === 'accepted'
-  );
+// Partner Relationships
+export async function getPartnerRelationships(): Promise<PartnerRelationship[]> {
+  const res = await fetch(`${API_URL}/partner-relationships`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function getLawyersByPartner(partnerId: string): PartnerRelationship[] {
-  return getPartnerRelationships().filter(
-    r => r.partnerId === partnerId && r.status === 'accepted'
-  );
+export async function getPartnersByLawyer(lawyerId: string): Promise<PartnerRelationship[]> {
+  const all = await getPartnerRelationships();
+  return all.filter(r => r.lawyerId === lawyerId && r.status === 'accepted');
 }
 
-export function createPartnerRelationship(relationship: PartnerRelationship): void {
-  const relationships = getPartnerRelationships();
-  relationships.push(relationship);
-  setItem(STORAGE_KEYS.PARTNER_RELATIONSHIPS, relationships);
+export async function getLawyersByPartner(partnerId: string): Promise<PartnerRelationship[]> {
+  const all = await getPartnerRelationships();
+  return all.filter(r => r.partnerId === partnerId && r.status === 'accepted');
 }
 
-export function updatePartnerRelationship(id: string, status: PartnerRelationship['status']): void {
-  const relationships = getPartnerRelationships();
-  const index = relationships.findIndex(r => r.id === id);
-  if (index !== -1) {
-    relationships[index].status = status;
-    setItem(STORAGE_KEYS.PARTNER_RELATIONSHIPS, relationships);
-  }
+export async function createPartnerRelationship(relationship: PartnerRelationship): Promise<void> {
+  await fetch(`${API_URL}/partner-relationships`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(relationship)),
+  });
+}
+
+export async function updatePartnerRelationship(id: string, status: PartnerRelationship['status']): Promise<void> {
+  await fetch(`${API_URL}/partner-relationships/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
 }
 
 // Requests
-export function getRequests(): Request[] {
-  return getItem(STORAGE_KEYS.REQUESTS, []);
+export async function getRequests(): Promise<Request[]> {
+  const res = await fetch(`${API_URL}/requests`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function getRequestsByReceiver(receiverId: string): Request[] {
-  return getRequests().filter(r => r.receiverId === receiverId && r.status === 'pending');
+export async function getRequestsByReceiver(receiverId: string): Promise<Request[]> {
+  const all = await getRequests();
+  return all.filter(r => r.receiverId === receiverId && r.status === 'pending');
 }
 
-export function getRequestsBySender(senderId: string): Request[] {
-  return getRequests().filter(r => r.senderId === senderId);
+export async function getRequestsBySender(senderId: string): Promise<Request[]> {
+  const all = await getRequests();
+  return all.filter(r => r.senderId === senderId);
 }
 
-export function createRequest(request: Request): void {
-  const requests = getRequests();
-  requests.push(request);
-  setItem(STORAGE_KEYS.REQUESTS, requests);
+export async function createRequest(request: Request): Promise<void> {
+  await fetch(`${API_URL}/requests`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(request)),
+  });
 }
 
-export function updateRequest(id: string, status: Request['status']): void {
-  const requests = getRequests();
-  const index = requests.findIndex(r => r.id === id);
-  if (index !== -1) {
-    requests[index].status = status;
-    setItem(STORAGE_KEYS.REQUESTS, requests);
-  }
+export async function updateRequest(id: string, status: Request['status']): Promise<void> {
+  await fetch(`${API_URL}/requests/${id}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  });
 }
 
-// Edit permissions
-export function getEditPermissions(): DiaryEditPermission[] {
-  return getItem(STORAGE_KEYS.EDIT_PERMISSIONS, []);
+// Edit Permissions
+export async function getEditPermissions(): Promise<DiaryEditPermission[]> {
+  const res = await fetch(`${API_URL}/edit-permissions`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function canPartnerEditDiary(partnerId: string, diaryId: string): boolean {
-  return getEditPermissions().some(
-    p => p.partnerId === partnerId && p.diaryId === diaryId && p.canEdit
-  );
+export async function canPartnerEditDiary(partnerId: string, diaryId: string): Promise<boolean> {
+  const perms = await getEditPermissions();
+  return perms.some(p => p.partnerId === partnerId && p.diaryId === diaryId && p.canEdit);
 }
 
-export function grantEditPermission(permission: DiaryEditPermission): void {
-  const permissions = getEditPermissions();
-  const existing = permissions.findIndex(
-    p => p.partnerId === permission.partnerId && p.diaryId === permission.diaryId
-  );
-  if (existing !== -1) {
-    permissions[existing] = permission;
-  } else {
-    permissions.push(permission);
-  }
-  setItem(STORAGE_KEYS.EDIT_PERMISSIONS, permissions);
+export async function grantEditPermission(permission: DiaryEditPermission): Promise<void> {
+  await fetch(`${API_URL}/edit-permissions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(toSnake(permission)),
+  });
 }
 
-export function revokeEditPermission(partnerId: string, diaryId: string): void {
-  const permissions = getEditPermissions().filter(
-    p => !(p.partnerId === partnerId && p.diaryId === diaryId)
-  );
-  setItem(STORAGE_KEYS.EDIT_PERMISSIONS, permissions);
+export async function revokeEditPermission(partnerId: string, diaryId: string): Promise<void> {
+  await fetch(`${API_URL}/edit-permissions/${diaryId}/${partnerId}`, { method: 'DELETE' });
 }
 
-// Audit logs
-export function getAuditLogs(): AuditLog[] {
-  return getItem(STORAGE_KEYS.AUDIT_LOGS, []);
+// Audit Logs
+export async function getAuditLogs(): Promise<AuditLog[]> {
+  const res = await fetch(`${API_URL}/audit-logs`);
+  const data = await res.json();
+  return toCamel(data);
 }
 
-export function addAuditLog(
+export async function addAuditLog(
   actionType: string,
   performedBy: string,
   targetEntity: string,
   targetId: string,
   details?: string
-): void {
-  const logs = getAuditLogs();
-  logs.push({
-    id: crypto.randomUUID(),
-    actionType,
-    performedBy,
-    targetEntity,
-    targetId,
-    timestamp: new Date().toISOString(),
-    details,
+): Promise<void> {
+  await fetch(`${API_URL}/audit-logs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: crypto.randomUUID(),
+      action_type: actionType,
+      performed_by: performedBy,
+      target_entity: targetEntity,
+      target_id: targetId,
+      details,
+    }),
   });
-  setItem(STORAGE_KEYS.AUDIT_LOGS, logs);
 }
 
-// Logout
 export function logout(): void {
   setCurrentUser(null);
 }

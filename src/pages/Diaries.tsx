@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, BookOpen, Calendar, Filter, Edit } from 'lucide-react';
 import { Button } from '@/ui/button';
@@ -15,6 +15,9 @@ export default function Diaries() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
+  const [diaries, setDiaries] = useState<Diary[]>([]);
+  const [lawyers, setLawyers] = useState<Map<string, any>>(new Map());
+  const [loading, setLoading] = useState(true);
 
   if (!user) {
     navigate('/login');
@@ -23,75 +26,120 @@ export default function Diaries() {
 
   const isLawyer = user.role === 'lawyer';
 
-  const handleRequestEdit = (e: React.MouseEvent, diaryId: string, lawyerId: string) => {
-    e.stopPropagation();
-    
-    // Check if already has permission
-    if (canPartnerEditDiary(user.id, diaryId)) {
-      toast({
-        title: "Already have access",
-        description: "You already have edit permission for this diary.",
-      });
-      return;
-    }
-
-    // Check if request already exists
-    const existingRequest = getRequests().find(
-      r => r.senderId === user.id && 
-           r.receiverId === lawyerId && 
-           r.diaryId === diaryId && 
-           r.status === 'pending'
-    );
-
-    if (existingRequest) {
-      toast({
-        title: "Request pending",
-        description: "You already have a pending edit request for this diary.",
-      });
-      return;
-    }
-
-    // Create edit request
-    createRequest({
-      id: crypto.randomUUID(),
-      type: 'edit_request',
-      senderId: user.id,
-      receiverId: lawyerId,
-      diaryId: diaryId,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: "Request sent",
-      description: "Edit permission request sent to the lawyer.",
-    });
-  };
-
-  // Get diaries based on role
-  let diaries: Diary[] = [];
-  if (isLawyer) {
-    diaries = getDiariesByLawyer(user.id);
-  } else {
-    // Partner: Get diaries from connected lawyers
-    const connections = getLawyersByPartner(user.id);
-    const allDiaries = getDiaries();
-    diaries = allDiaries.filter(d => 
-      connections.some(c => c.lawyerId === d.lawyerId)
-    );
-  }
-
   // Filter diaries based on search
-  const filteredDiaries = diaries.filter(diary =>
+  const filteredDiaries = Array.isArray(diaries) ? diaries.filter(diary =>
     diary.caseNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
     diary.partyNames.toLowerCase().includes(searchQuery.toLowerCase()) ||
     diary.courtName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  ) : [];
 
   // Sort by date (newest first)
   filteredDiaries.sort((a, b) => 
     new Date(b.matterDate).getTime() - new Date(a.matterDate).getTime()
   );
+
+  useEffect(() => {
+    const loadDiaries = async () => {
+      try {
+        let diariesData: Diary[] = [];
+        if (isLawyer) {
+          diariesData = await getDiariesByLawyer(user.id);
+          console.log('Lawyer diaries:', diariesData);
+        } else {
+          const connections = await getLawyersByPartner(user.id);
+          console.log('Partner connections:', connections);
+          const allDiaries = await getDiaries();
+          console.log('All diaries:', allDiaries);
+          diariesData = allDiaries.filter(d => 
+            connections.some(c => c.lawyerId === d.lawyerId)
+          );
+          console.log('Filtered diaries for partner:', diariesData);
+          
+          // Load lawyer info for partners
+          const lawyerMap = new Map();
+          for (const diary of diariesData) {
+            if (!lawyerMap.has(diary.lawyerId)) {
+              const lawyer = await getUserById(diary.lawyerId);
+              if (lawyer) lawyerMap.set(diary.lawyerId, lawyer);
+            }
+          }
+          setLawyers(lawyerMap);
+        }
+        setDiaries(diariesData);
+      } catch (error) {
+        console.error('Error loading diaries:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDiaries();
+  }, [user.id, isLawyer]);
+
+  const handleRequestEdit = async (e: React.MouseEvent, diaryId: string, lawyerId: string) => {
+    e.stopPropagation();
+    
+    try {
+      const hasPermission = await canPartnerEditDiary(user.id, diaryId);
+      if (hasPermission) {
+        toast({
+          title: "Already have access",
+          description: "You already have edit permission for this diary.",
+        });
+        return;
+      }
+
+      const requests = await getRequests();
+      const existingRequest = requests.find(
+        r => r.senderId === user.id && 
+             r.receiverId === lawyerId && 
+             r.diaryId === diaryId && 
+             r.status === 'pending'
+      );
+
+      if (existingRequest) {
+        toast({
+          title: "Request pending",
+          description: "You already have a pending edit request for this diary.",
+        });
+        return;
+      }
+
+      await createRequest({
+        id: crypto.randomUUID(),
+        type: 'edit_request',
+        senderId: user.id,
+        receiverId: lawyerId,
+        diaryId: diaryId,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+
+      toast({
+        title: "Request sent",
+        description: "Edit permission request sent to the lawyer.",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to send request. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading diaries...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -138,7 +186,7 @@ export default function Diaries() {
         {filteredDiaries.length > 0 ? (
           <div className="grid gap-4">
             {filteredDiaries.map((diary) => {
-              const lawyerInfo = !isLawyer ? getUserById(diary.lawyerId) : null;
+              const lawyerInfo = !isLawyer ? lawyers.get(diary.lawyerId) : null;
               
               return (
                 <Card

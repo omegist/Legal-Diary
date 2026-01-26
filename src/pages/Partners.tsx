@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { UserMinus, Users, Shield } from 'lucide-react';
 import { Button } from '@/ui/button';
@@ -8,7 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/layout/Header';
 import { getPartnersByLawyer, updatePartnerRelationship, getUserById, getEditPermissions, revokeEditPermission, getDiaryById } from '@/lib/storage';
 import { Avatar, AvatarFallback, AvatarImage } from '@/ui/avatar';
-import { PartnerProfile } from '@/types';
+import { PartnerProfile, PartnerRelationship, DiaryEditPermission } from '@/types';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -27,17 +27,69 @@ export default function Partners() {
   const { toast } = useToast();
   const { user } = useAuth();
   const [refreshKey, setRefreshKey] = useState(0);
+  const [partnerRelationships, setPartnerRelationships] = useState<PartnerRelationship[]>([]);
+  const [partners, setPartners] = useState<Map<string, PartnerProfile>>(new Map());
+  const [editPermissions, setEditPermissions] = useState<DiaryEditPermission[]>([]);
+  const [diaries, setDiaries] = useState<Map<string, any>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadPartners = async () => {
+      if (!user) return;
+      try {
+        const relationships = await getPartnersByLawyer(user.id);
+        setPartnerRelationships(relationships);
+        
+        const permissions = await getEditPermissions();
+        setEditPermissions(permissions);
+        
+        // Load partner details
+        const partnerMap = new Map();
+        for (const rel of relationships) {
+          const partner = await getUserById(rel.partnerId);
+          if (partner) partnerMap.set(rel.partnerId, partner);
+        }
+        setPartners(partnerMap);
+        
+        // Load diary details for permissions
+        const diaryMap = new Map();
+        for (const perm of permissions) {
+          if (!diaryMap.has(perm.diaryId)) {
+            const diary = await getDiaryById(perm.diaryId);
+            if (diary) diaryMap.set(perm.diaryId, diary);
+          }
+        }
+        setDiaries(diaryMap);
+      } catch (error) {
+        console.error('Error loading partners:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadPartners();
+  }, [user, refreshKey]);
 
   if (!user || user.role !== 'lawyer') {
     navigate('/dashboard');
     return null;
   }
 
-  const partnerRelationships = getPartnersByLawyer(user.id);
-  const editPermissions = getEditPermissions();
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container py-8">
+          <div className="text-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Loading partners...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
-  const handleRemovePartner = (relationshipId: string, partnerName: string) => {
-    updatePartnerRelationship(relationshipId, 'removed');
+  const handleRemovePartner = async (relationshipId: string, partnerName: string) => {
+    await updatePartnerRelationship(relationshipId, 'removed');
     toast({
       title: 'Partner Removed',
       description: `${partnerName} has been removed from your partners.`,
@@ -45,8 +97,8 @@ export default function Partners() {
     setRefreshKey(prev => prev + 1);
   };
 
-  const handleRevokePermission = (partnerId: string, diaryId: string) => {
-    revokeEditPermission(partnerId, diaryId);
+  const handleRevokePermission = async (partnerId: string, diaryId: string) => {
+    await revokeEditPermission(partnerId, diaryId);
     toast({
       title: 'Permission Revoked',
       description: 'Edit permission has been revoked.',
@@ -69,7 +121,7 @@ export default function Partners() {
         {partnerRelationships.length > 0 ? (
           <div className="space-y-4">
             {partnerRelationships.map((relationship) => {
-              const partner = getUserById(relationship.partnerId) as PartnerProfile | undefined;
+              const partner = partners.get(relationship.partnerId);
               if (!partner) return null;
 
               // Get edit permissions for this partner
@@ -103,7 +155,7 @@ export default function Partners() {
                             </div>
                             <div className="flex flex-wrap gap-2">
                               {partnerPermissions.map((perm) => {
-                                const diary = getDiaryById(perm.diaryId);
+                                const diary = diaries.get(perm.diaryId);
                                 if (!diary) return null;
                                 return (
                                   <Badge

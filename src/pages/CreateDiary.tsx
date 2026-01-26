@@ -38,7 +38,7 @@ export default function CreateDiary() {
     return null;
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const requiredFields = ['matterDate', 'courtName', 'caseType', 'caseNumber', 'partyNames', 'stageOfCase', 'purposeOfHearing'];
@@ -53,33 +53,59 @@ export default function CreateDiary() {
       return;
     }
 
-    const newDiary: Diary = {
-      id: crypto.randomUUID(),
-      lawyerId: user.id,
-      matterDate: formData.matterDate,
-      courtName: formData.courtName,
-      caseType: formData.caseType,
-      caseNumber: formData.caseNumber,
-      partyNames: formData.partyNames,
-      opponentAdvocate: formData.opponentAdvocate,
-      stageOfCase: formData.stageOfCase,
-      purposeOfHearing: formData.purposeOfHearing,
-      notes: formData.notes || undefined,
-      reminderEnabled: formData.reminderEnabled,
-      reminderDate: formData.reminderDate || undefined,
-      reminderTime: formData.reminderTime || undefined,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    // Validate reminder time is in the future
+    if (formData.reminderEnabled && formData.reminderDate && formData.reminderTime) {
+      const reminderDateTime = new Date(`${formData.reminderDate}T${formData.reminderTime}`);
+      const now = new Date();
+      
+      if (reminderDateTime <= now) {
+        toast({
+          title: 'Invalid Reminder Time',
+          description: 'Reminder must be set for a future date and time.',
+          variant: 'destructive',
+        });
+        return;
+      }
+    }
 
-    createDiary(newDiary);
+    try {
+      const newDiary: Diary = {
+        id: crypto.randomUUID(),
+        lawyerId: user.id,
+        matterDate: formData.matterDate,
+        courtName: formData.courtName,
+        caseType: formData.caseType,
+        caseNumber: formData.caseNumber,
+        partyNames: formData.partyNames,
+        opponentAdvocate: formData.opponentAdvocate,
+        stageOfCase: formData.stageOfCase,
+        purposeOfHearing: formData.purposeOfHearing,
+        notes: formData.notes || undefined,
+        reminderEnabled: formData.reminderEnabled,
+        reminderDate: formData.reminderDate || undefined,
+        reminderTime: formData.reminderTime || undefined,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
 
-    toast({
-      title: 'Diary Created',
-      description: 'Your diary entry has been saved.',
-    });
+      await createDiary(newDiary);
 
-    navigate('/diaries');
+      toast({
+        title: 'Diary Created',
+        description: formData.reminderEnabled 
+          ? 'Your diary entry has been saved with reminder set.'
+          : 'Your diary entry has been saved to database.',
+      });
+
+      navigate('/diaries');
+    } catch (error) {
+      console.error('Error creating diary:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create diary. Please try again.',
+        variant: 'destructive',
+      });
+    }
   };
 
   return (

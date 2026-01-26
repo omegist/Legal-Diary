@@ -1,0 +1,38 @@
+services:
+  # Backend API
+  - type: web
+    name: legal-diary-backend
+    runtime: node
+    buildCommand: cd server && npm install && npm run build
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DB_HOST
+        fromDatabase:
+          name: legal-diary-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: legal-diary-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: legal-diary-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: legal-diary-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: legal-diary-db
+          property: password
+
+databases:
+  # PostgreSQL Database
+  - name: legal-diary-db
+    databaseName: legal_diary
+    user: legal_diary_user
