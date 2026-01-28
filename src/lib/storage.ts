@@ -1,7 +1,7 @@
 import { User, LawyerProfile, PartnerProfile, Diary, PartnerRelationship, Request, DiaryEditPermission, AuditLog } from '@/types';
 
 // Use environment variable or fallback to production URL
-const API_URL = import.meta.env.VITE_API_URL || 'https://legal-diary-backend.onrender.com/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://your-northflank-backend-url.northflank.app/api';
 const STORAGE_KEYS = {
   CURRENT_USER: 'legalDiary_currentUser',
 };

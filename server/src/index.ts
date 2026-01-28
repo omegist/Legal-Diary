@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3001;
 // CORS configuration for production
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-netlify-app.netlify.app', 'https://legal-diary.netlify.app'] // Add your Netlify URL
+    ? ['https://your-netlify-app.netlify.app', 'https://legal-diary.netlify.app', /\.netlify\.app$/] 
     : '*',
   credentials: true,
 };
