@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import pool from './db.js';
 import { startReminderService } from './reminderService.js';
+import { initializeDatabase } from './initDb.js';
 
 dotenv.config();
 
@@ -26,6 +27,16 @@ startReminderService();
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
+});
+
+// Database initialization endpoint (run once after deployment)
+app.post('/api/init-database', async (req, res) => {
+  try {
+    const result = await initializeDatabase();
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Users
