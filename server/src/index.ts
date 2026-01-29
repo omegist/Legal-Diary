@@ -10,12 +10,12 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// CORS configuration for production
+// CORS configuration - allow all origins for mobile app
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-netlify-app.netlify.app', 'https://legal-diary.netlify.app', /\.netlify\.app$/] 
-    : '*',
-  credentials: true,
+  origin: '*', // Allow all origins including mobile app
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization'],
 };
 
 app.use(cors(corsOptions));
