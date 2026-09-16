@@ -1,7 +1,9 @@
 import { User, LawyerProfile, PartnerProfile, Diary, PartnerRelationship, Request, DiaryEditPermission, AuditLog } from '@/types';
+import { saveToCache, getFromCache, STORES } from './offlineCache';
 
-// Use environment variable or fallback to production URL
-const API_URL = import.meta.env.VITE_API_URL || 'https://your-northflank-backend-url.northflank.app/api';
+// IMPORTANT: For mobile app, always use production URL
+// localhost doesn't work on mobile devices
+const API_URL = 'https://legal-diary-backend.onrender.com/api';
 const STORAGE_KEYS = {
   CURRENT_USER: 'legalDiary_currentUser',
 };
@@ -63,13 +65,27 @@ export async function getUserById(id: string): Promise<LawyerProfile | PartnerPr
 
 export async function getUserByEmail(email: string): Promise<LawyerProfile | PartnerProfile | undefined> {
   try {
+    console.log('Fetching user by email:', email);
     const res = await fetch(`${API_URL}/users/email/${encodeURIComponent(email)}`);
-    const data = await res.json();
-    // If no user found, API returns null or empty object
-    if (!data || Object.keys(data).length === 0) {
+    console.log('Response status:', res.status);
+    
+    if (!res.ok) {
+      console.error('Failed to fetch user:', res.status, res.statusText);
       return undefined;
     }
-    return toCamel(data);
+    
+    const data = await res.json();
+    console.log('User data received:', data);
+    
+    // If no user found, API returns null or empty object
+    if (!data || Object.keys(data).length === 0) {
+      console.log('No user found with email:', email);
+      return undefined;
+    }
+    
+    const camelData = toCamel(data);
+    console.log('Converted to camelCase:', camelData);
+    return camelData;
   } catch (error) {
     console.error('Error fetching user by email:', error);
     return undefined;
@@ -113,9 +129,17 @@ export async function searchLawyers(query: string): Promise<LawyerProfile[]> {
 
 // Diaries
 export async function getDiaries(): Promise<Diary[]> {
-  const res = await fetch(`${API_URL}/diaries`);
-  const data = await res.json();
-  return toCamel(data);
+  try {
+    const res = await fetch(`${API_URL}/diaries`);
+    const data = await res.json();
+    const diaries = toCamel(data);
+    // Cache for offline use
+    await saveToCache(STORES.DIARIES, diaries);
+    return diaries;
+  } catch (error) {
+    console.log('Offline: Loading diaries from cache');
+    return await getFromCache(STORES.DIARIES) || [];
+  }
 }
 
 export async function getDiaryById(id: string): Promise<Diary | undefined> {
@@ -125,26 +149,47 @@ export async function getDiaryById(id: string): Promise<Diary | undefined> {
 }
 
 export async function getDiariesByLawyer(lawyerId: string): Promise<Diary[]> {
-  const res = await fetch(`${API_URL}/diaries/lawyer/${lawyerId}`);
-  const data = await res.json();
-  return toCamel(data);
+  try {
+    const res = await fetch(`${API_URL}/diaries/lawyer/${lawyerId}`);
+    const data = await res.json();
+    const diaries = toCamel(data);
+    await saveToCache(STORES.DIARIES, diaries);
+    return diaries;
+  } catch (error) {
+    console.log('Offline: Loading lawyer diaries from cache');
+    const allDiaries = await getFromCache(STORES.DIARIES) || [];
+    return allDiaries.filter((d: Diary) => d.lawyerId === lawyerId);
+  }
 }
 
 export async function createDiary(diary: Diary): Promise<void> {
   console.log('Creating diary:', diary);
   const snakeData = toSnake(diary);
   console.log('Snake case data:', snakeData);
-  const res = await fetch(`${API_URL}/diaries`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(snakeData),
-  });
-  const result = await res.json();
-  console.log('Create diary response:', result);
-  if (!res.ok) {
-    throw new Error(`Failed to create diary: ${JSON.stringify(result)}`);
+  
+  try {
+    const res = await fetch(`${API_URL}/diaries`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(snakeData),
+    });
+    
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error('Server error response:', errorText);
+      throw new Error(`Failed to create diary: ${res.status} - ${errorText}`);
+    }
+    
+    const result = await res.json();
+    console.log('Create diary response:', result);
+    await addAuditLog('DIARY_CREATED', diary.lawyerId, 'diary', diary.id);
+  } catch (error) {
+    console.error('Network error creating diary:', error);
+    throw error;
   }
-  await addAuditLog('DIARY_CREATED', diary.lawyerId, 'diary', diary.id);
 }
 
 export async function updateDiary(diary: Diary): Promise<void> {

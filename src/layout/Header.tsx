@@ -40,11 +40,11 @@ export function Header() {
   const navItems = user?.role === 'lawyer' ? lawyerNavItems : partnerNavItems;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between">
-        <Link to="/" className="flex items-center gap-2">
-          <Scale className="h-8 w-8 text-primary" />
-          <span className="font-serif text-xl font-semibold text-gold-gradient">
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 safe-top">
+      <div className="container flex h-16 items-center justify-between px-4 sm:px-6">
+        <Link to="/" className="flex items-center gap-2 flex-shrink-0">
+          <Scale className="h-6 w-6 sm:h-7 sm:w-7 text-primary" />
+          <span className="font-serif text-base sm:text-lg font-semibold text-gold-gradient whitespace-nowrap">
             Legal Diary
           </span>
         </Link>
@@ -64,13 +64,13 @@ export function Header() {
               ))}
             </nav>
 
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                    <Avatar className="h-10 w-10 border-2 border-primary/20">
+                  <Button variant="ghost" className="relative h-9 w-9 sm:h-10 sm:w-10 rounded-full p-0">
+                    <Avatar className="h-9 w-9 sm:h-10 sm:w-10 border-2 border-primary/20">
                       <AvatarImage src={user?.profilePhoto} alt={user?.name} />
-                      <AvatarFallback className="bg-primary/10 text-primary">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
                         {user?.name?.charAt(0) || 'U'}
                       </AvatarFallback>
                     </Avatar>
@@ -105,7 +105,7 @@ export function Header() {
               {/* Mobile Menu */}
               <Sheet open={isOpen} onOpenChange={setIsOpen}>
                 <SheetTrigger asChild className="md:hidden">
-                  <Button variant="ghost" size="icon">
+                  <Button variant="ghost" size="icon" className="h-9 w-9 sm:h-10 sm:w-10 p-0">
                     <Menu className="h-5 w-5" />
                   </Button>
                 </SheetTrigger>
@@ -136,15 +136,15 @@ export function Header() {
             </div>
           </>
         ) : (
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <Button
               variant="ghost"
               onClick={() => navigate('/login')}
-              className="hidden sm:inline-flex"
+              className="hidden sm:inline-flex text-sm h-9 px-3"
             >
               Sign In
             </Button>
-            <Button onClick={() => navigate('/get-started')} className="gold-gradient text-primary-foreground">
+            <Button onClick={() => navigate('/get-started')} className="gold-gradient text-primary-foreground text-sm h-9 px-3 sm:h-10 sm:px-4">
               Get Started
             </Button>
           </div>

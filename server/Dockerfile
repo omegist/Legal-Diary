@@ -16,8 +16,8 @@ COPY . .
 # Build TypeScript
 RUN npm run build
 
-# Expose port
-EXPOSE 3001
+# Expose port (Fly.io uses 8080)
+EXPOSE 8080
 
 # Start the application
 CMD ["npm", "start"]

@@ -22,12 +22,15 @@ export default function Login() {
     setIsLoading(true);
 
     try {
+      console.log('Attempting login with email:', email);
       const user = await getUserByEmail(email);
+      console.log('User found:', user);
       
       if (!user) {
+        console.log('No user found, showing error');
         toast({
           title: 'Account Not Found',
-          description: 'No account found with this email. Please sign up first.',
+          description: 'No account found with this email. Please check your email or sign up first.',
           variant: 'destructive',
         });
         setIsLoading(false);
@@ -35,6 +38,7 @@ export default function Login() {
       }
 
       // In a real app, you'd verify the password here
+      console.log('Login successful, setting user');
       setUser(user);
       toast({
         title: 'Welcome back!',
@@ -42,9 +46,10 @@ export default function Login() {
       });
       navigate('/dashboard');
     } catch (error) {
+      console.error('Login error:', error);
       toast({
         title: 'Error',
-        description: 'Something went wrong. Please try again.',
+        description: 'Something went wrong. Please check your internet connection and try again.',
         variant: 'destructive',
       });
     } finally {
